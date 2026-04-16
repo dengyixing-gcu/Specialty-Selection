@@ -1,0 +1,6 @@
+course-selection-system/flask_session/
+course-selection-system/__pycache__/
+course-selection-system/app/__pycache__/
+course-selection-system/app/routes/__pycache__/
+instance/
+*.db

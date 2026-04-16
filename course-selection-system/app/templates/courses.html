@@ -40,12 +40,31 @@ let selectionOpen = false;
 let selectedCourseId = null;
 let countdownInterval = null;
 
+async function checkAuth() {
+    try {
+        const response = await fetch('/auth/check-auth');
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            return false;
+        }
+        return true;
+    } catch (error) {
+        window.location.href = '/auth/login';
+        return false;
+    }
+}
+
 async function loadCourses() {
     try {
         const [coursesRes, statusRes] = await Promise.all([
             fetch('/courses/api/list'),
             fetch('/courses/api/status')
         ]);
+        
+        if (coursesRes.status === 401) {
+            window.location.href = '/auth/login';
+            return;
+        }
         
         const coursesData = await coursesRes.json();
         const statusData = await statusRes.json();
@@ -145,6 +164,11 @@ async function confirmSelect(courseId) {
             body: JSON.stringify({course_id: courseId})
         });
         
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            return;
+        }
+        
         const data = await response.json();
         
         if (response.ok) {
@@ -185,6 +209,10 @@ function startCountdown(seconds) {
 async function loadResult() {
     try {
         const response = await fetch('/selection/result');
+        if (response.status === 401) {
+            window.location.href = '/auth/login';
+            return;
+        }
         const data = await response.json();
         
         if (data.has_selected) {
@@ -204,7 +232,14 @@ function logout() {
     });
 }
 
-loadCourses();
-if (selectedCourseId) loadResult();
+async function init() {
+    const authenticated = await checkAuth();
+    if (!authenticated) return;
+    
+    loadCourses();
+    if (selectedCourseId) loadResult();
+}
+
+init();
 </script>
 {% endblock %}

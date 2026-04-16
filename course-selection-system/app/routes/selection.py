@@ -1,12 +1,12 @@
 from flask import Blueprint, request, jsonify, session
 from app.models import Selection, Course, SystemConfig
-from app import get_redis
-import time
+from concurrency import rate_limit, atomic_select_course
 
 bp = Blueprint("selection", __name__, url_prefix="/selection")
 
 
 @bp.route("/select", methods=["POST"])
+@rate_limit
 def select_course():
     if "user_id" not in session or session.get("is_admin"):
         return jsonify({"error": "未登录或无权访问"}), 401
@@ -27,37 +27,17 @@ def select_course():
     if status != "open":
         return jsonify({"error": "选课时间未到或已结束"}), 400
 
-    # 检查课程是否已满
+    # 检查课程是否已满（快速检查）
     if Course.is_full(course_id):
         return jsonify({"error": "课程已满"}), 400
 
-    # 使用 Redis 锁确保原子操作
-    redis = get_redis()
-    lock_key = f"course_lock:{course_id}"
-    lock_acquired = redis.set(lock_key, "1", nx=True, ex=5)
-
-    if not lock_acquired:
-        return jsonify({"error": "系统繁忙，请稍后重试"}), 503
-
-    try:
-        # 再次检查课程人数（防止并发）
-        current_count = Course.get_current_count(course_id)
-        if current_count >= 90:
-            return jsonify({"error": "课程已满"}), 400
-
-        # 创建选课记录
-        Selection.create(student_id, course_id)
-
-        # 更新课程人数
-        Course.increment_count(course_id)
-
-        # 更新 Redis 缓存
-        redis.set(f"course_count:{course_id}", current_count + 1)
-
-        return jsonify({"message": "选课成功", "course_id": course_id}), 200
-
-    finally:
-        redis.delete(lock_key)
+    # 原子性选课操作（使用 Redis 分布式锁或数据库锁）
+    success, message = atomic_select_course(student_id, course_id)
+    
+    if success:
+        return jsonify({"message": message, "course_id": course_id}), 200
+    else:
+        return jsonify({"error": message}), 400
 
 
 @bp.route("/result")
@@ -72,11 +52,27 @@ def selection_result():
         return jsonify(
             {
                 "has_selected": True,
-                "course_id": selection["course_id"],
-                "course_name": selection["course_name"],
-                "is_auto_assigned": bool(selection["is_auto_assigned"]),
-                "selected_at": selection["selected_at"],
+                "course_id": selection.course_id,
+                "course_name": selection.course_name,
+                "is_auto_assigned": bool(selection.is_auto_assigned),
+                "selected_at": selection.selected_at.isoformat() if selection.selected_at else None,
             }
         )
     else:
         return jsonify({"has_selected": False}), 200
+
+
+@bp.route("/queue-status")
+def queue_status():
+    """获取选课队列状态"""
+    if "user_id" not in session:
+        return jsonify({"error": "未登录"}), 401
+
+    student_id = session["user_id"]
+    # 队列功能保留，当前主要使用锁机制
+    
+    return jsonify({
+        "queue_size": 0,
+        "your_position": None,
+        "in_queue": False
+    })
