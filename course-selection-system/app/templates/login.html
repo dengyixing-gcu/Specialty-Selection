@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}登录 - 选课系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">用户登录</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger d-none" id="errorAlert"></div>
+                
+                <div class="mb-3">
+                    <label class="form-label">账号</label>
+                    <input type="text" class="form-control" id="studentId" placeholder="学号或管理员账号">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">密码</label>
+                    <input type="password" class="form-control" id="password" placeholder="请输入密码">
+                </div>
+                
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="isAdmin">
+                    <label class="form-check-label" for="isAdmin">管理员登录</label>
+                </div>
+                
+                <button class="btn btn-primary w-100" onclick="login()">登录</button>
+                
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('auth.register') }}" class="text-decoration-none">没有账号？立即注册</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function login() {
+    const studentId = document.getElementById('studentId').value;
+    const password = document.getElementById('password').value;
+    const isAdmin = document.getElementById('isAdmin').checked;
+    
+    try {
+        const response = await fetch('/auth/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({student_id: studentId, password, is_admin: isAdmin})
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            window.location.href = data.redirect;
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        showError('网络错误，请稍后重试');
+    }
+}
+
+function showError(message) {
+    const alert = document.getElementById('errorAlert');
+    alert.textContent = message;
+    alert.classList.remove('d-none');
+}
+
+document.getElementById('password').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') login();
+});
+</script>
+{% endblock %}

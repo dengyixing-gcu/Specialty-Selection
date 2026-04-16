@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}管理员后台 - 选课系统{% endblock %}
+
+{% block content %}
+<ul class="nav nav-tabs mb-4" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#dashboard">选课状态</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#timeSetting">时间设置</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#students">学生管理</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#export">导出结果</a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <div class="tab-pane fade show active" id="dashboard">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card bg-primary text-white">
+                    <div class="card-body">
+                        <h5>总学生数</h5>
+                        <h2 id="totalStudents">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-success text-white">
+                    <div class="card-body">
+                        <h5>已选课</h5>
+                        <h2 id="selectedCount">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-info text-white">
+                    <div class="card-body">
+                        <h5>当前状态</h5>
+                        <h4 id="currentStatus">-</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4">
+            <h5>课程统计</h5>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>课程名称</th>
+                        <th>已选人数</th>
+                        <th>剩余名额</th>
+                    </tr>
+                </thead>
+                <tbody id="courseStats"></tbody>
+            </table>
+        </div>
+        
+        <div class="mt-4">
+            <button class="btn btn-success" onclick="startSelection()">开始选课</button>
+            <button class="btn btn-danger" onclick="endSelection()">结束选课</button>
+        </div>
+    </div>
+    
+    <div class="tab-pane fade" id="timeSetting">
+        <div class="card">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">选课开始时间</label>
+                    <input type="datetime-local" class="form-control" id="startTime">
+                </div>
+                <button class="btn btn-primary" onclick="setStartTime()">设置时间</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tab-pane fade" id="students">
+        <div class="mb-3">
+            <input type="text" class="form-control" id="searchStudent" placeholder="搜索学号或姓名">
+        </div>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>学号</th>
+                    <th>姓名</th>
+                    <th>专业</th>
+                    <th>班级</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="studentList"></tbody>
+        </table>
+    </div>
+    
+    <div class="tab-pane fade" id="export">
+        <div class="card">
+            <div class="card-body">
+                <p>导出所有学生的选课结果到 Excel 文件</p>
+                <button class="btn btn-success" onclick="exportResults()">导出 Excel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="editStudentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">编辑学生信息</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editStudentId">
+                <div class="mb-3">
+                    <label class="form-label">学号</label>
+                    <input type="text" class="form-control" id="editId" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">姓名</label>
+                    <input type="text" class="form-control" id="editName">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">专业</label>
+                    <select class="form-select" id="editMajor">
+                        <option value="计算机科学与技术">计算机科学与技术</option>
+                        <option value="软件工程">软件工程</option>
+                        <option value="数据科学与大数据技术">数据科学与大数据技术</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">班级</label>
+                    <select class="form-select" id="editClass">
+                        <option value="1 班">1 班</option>
+                        <option value="2 班">2 班</option>
+                        <option value="3 班">3 班</option>
+                        <option value="4 班">4 班</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="saveStudent()">保存</button>
+                <button type="button" class="btn btn-warning" onclick="resetPassword()">重置密码</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const MAJORS = ['计算机科学与技术', '软件工程', '数据科学与大数据技术'];
+const CLASSES = ['1 班', '2 班', '3 班', '4 班'];
+
+async function loadDashboard() {
+    try {
+        const response = await fetch('/admin/api/status');
+        const data = await response.json();
+        
+        document.getElementById('totalStudents').textContent = data.total_students;
+        document.getElementById('selectedCount').textContent = data.selected_count;
+        document.getElementById('currentStatus').textContent = data.status;
+        
+        const tbody = document.getElementById('courseStats');
+        tbody.innerHTML = data.courses.map(c => `
+            <tr>
+                <td>${c.name}</td>
+                <td>${c.current_count}</td>
+                <td>${c.max_capacity - c.current_count}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('加载失败:', error);
+    }
+}
+
+async function setStartTime() {
+    const startTime = document.getElementById('startTime').value;
+    if (!startTime) {
+        alert('请选择时间');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/admin/api/set-selection-time', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({start_time: startTime})
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            alert('时间设置成功');
+            loadDashboard();
+        } else {
+            alert(data.error);
+        }
+    } catch (error) {
+        alert('网络错误');
+    }
+}
+
+async function loadStudents() {
+    try {
+        const response = await fetch('/admin/api/students');
+        const data = await response.json();
+        
+        const tbody = document.getElementById('studentList');
+        tbody.innerHTML = data.students.map(s => `
+            <tr>
+                <td>${s.student_id}</td>
+                <td>${s.name}</td>
+                <td>${s.major}</td>
+                <td>${s.class}</td>
+                <td>
+                    <button class="btn btn-sm btn-primary" onclick="editStudent('${s.student_id}', '${s.name}', '${s.major}', '${s.class}')">编辑</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('加载失败:', error);
+    }
+}
+
+function editStudent(id, name, major, class_name) {
+    document.getElementById('editStudentId').value = id;
+    document.getElementById('editId').value = id;
+    document.getElementById('editName').value = name;
+    document.getElementById('editMajor').value = major;
+    document.getElementById('editClass').value = class_name;
+    
+    new bootstrap.Modal(document.getElementById('editStudentModal')).show();
+}
+
+async function saveStudent() {
+    const student_id = document.getElementById('editStudentId').value;
+    const name = document.getElementById('editName').value;
+    const major = document.getElementById('editMajor').value;
+    const class_name = document.getElementById('editClass').value;
+    
+    try {
+        const response = await fetch('/admin/api/student/update', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({student_id, name, major, class: class_name})
+        });
+        
+        if (response.ok) {
+            alert('保存成功');
+            bootstrap.Modal.getInstance(document.getElementById('editStudentModal')).hide();
+            loadStudents();
+        }
+    } catch (error) {
+        alert('保存失败');
+    }
+}
+
+async function resetPassword() {
+    const student_id = document.getElementById('editStudentId').value;
+    
+    try {
+        const response = await fetch('/admin/api/student/reset-password', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({student_id})
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            alert(`密码已重置为：${data.new_password}`);
+        }
+    } catch (error) {
+        alert('重置失败');
+    }
+}
+
+async function exportResults() {
+    window.location.href = '/admin/api/export';
+}
+
+async function startSelection() {
+    if (!confirm('确认开始选课？')) return;
+    
+    try {
+        const response = await fetch('/admin/api/start-selection', {method: 'POST'});
+        const data = await response.json();
+        if (response.ok) {
+            alert('选课已开始');
+            loadDashboard();
+        }
+    } catch (error) {
+        alert('操作失败');
+    }
+}
+
+async function endSelection() {
+    if (!confirm('确认结束选课？未选课学生将被自动分配。')) return;
+    
+    try {
+        const response = await fetch('/admin/api/end-selection', {method: 'POST'});
+        const data = await response.json();
+        if (response.ok) {
+            alert('选课已结束');
+            loadDashboard();
+        }
+    } catch (error) {
+        alert('操作失败');
+    }
+}
+
+function logout() {
+    fetch('/auth/logout', {method: 'POST'}).then(() => {
+        window.location.href = '/auth/login';
+    });
+}
+
+loadDashboard();
+loadStudents();
+</script>
+{% endblock %}

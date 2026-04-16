@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}注册 - 选课系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">学生注册</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger d-none" id="errorAlert"></div>
+                <div class="alert alert-success d-none" id="successAlert"></div>
+                
+                <div class="mb-3">
+                    <label class="form-label">学号 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="studentId" placeholder="12 位数字学号" maxlength="12">
+                    <div class="form-text">学号必须为 12 位数字</div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">姓名 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="name" placeholder="请输入姓名">
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">专业 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="major">
+                            <option value="">请选择专业</option>
+                            {% for major in majors %}
+                            <option value="{{ major }}">{{ major }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">班级 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="class">
+                            <option value="">请选择班级</option>
+                            {% for class in classes %}
+                            <option value="{{ class }}">{{ class }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">密码 <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="password" placeholder="至少 4 位">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">确认密码 <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" id="confirmPassword" placeholder="再次输入密码">
+                </div>
+                
+                <button class="btn btn-primary w-100" onclick="register()">注册</button>
+                
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('auth.login') }}" class="text-decoration-none">已有账号？立即登录</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function register() {
+    const studentId = document.getElementById('studentId').value;
+    const name = document.getElementById('name').value;
+    const major = document.getElementById('major').value;
+    const class_name = document.getElementById('class').value;
+    const password = document.getElementById('password').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    
+    // 验证学号
+    if (!/^\d{12}$/.test(studentId)) {
+        showError('学号必须为 12 位数字');
+        return;
+    }
+    
+    // 验证姓名
+    if (!name) {
+        showError('姓名不能为空');
+        return;
+    }
+    
+    // 验证专业
+    if (!major) {
+        showError('请选择专业');
+        return;
+    }
+    
+    // 验证班级
+    if (!class_name) {
+        showError('请选择班级');
+        return;
+    }
+    
+    // 验证密码
+    if (password.length < 4) {
+        showError('密码至少 4 位');
+        return;
+    }
+    
+    // 验证确认密码
+    if (password !== confirmPassword) {
+        showError('两次输入的密码不一致');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/auth/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({student_id: studentId, name, major, class, password})
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showSuccess('注册成功，即将跳转到登录页面...');
+            setTimeout(() => {
+                window.location.href = '/auth/login';
+            }, 1500);
+        } else {
+            showError(data.error);
+        }
+    } catch (error) {
+        showError('网络错误，请稍后重试');
+    }
+}
+
+function showError(message) {
+    const errorAlert = document.getElementById('errorAlert');
+    const successAlert = document.getElementById('successAlert');
+    errorAlert.textContent = message;
+    errorAlert.classList.remove('d-none');
+    successAlert.classList.add('d-none');
+}
+
+function showSuccess(message) {
+    const errorAlert = document.getElementById('errorAlert');
+    const successAlert = document.getElementById('successAlert');
+    successAlert.textContent = message;
+    successAlert.classList.remove('d-none');
+    errorAlert.classList.add('d-none');
+}
+</script>
+{% endblock %}

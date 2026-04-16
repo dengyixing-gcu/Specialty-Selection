@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}选课 - 选课系统{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <h5 class="card-title">选课状态</h5>
+                <p class="mb-1">当前状态：<span id="statusText" class="badge bg-secondary">加载中...</span></p>
+                <p class="mb-0" id="countdownContainer">
+                    <span id="countdown">--:--:--</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row" id="courseList">
+    <!-- 课程列表将通过 JS 加载 -->
+</div>
+
+<div id="resultContainer" class="mt-4 d-none">
+    <div class="card border-success">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0">选课结果</h5>
+        </div>
+        <div class="card-body">
+            <p class="mb-1">您已选择课程：<strong id="selectedCourse"></strong></p>
+            <p class="mb-0" id="assignmentType"></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectionOpen = false;
+let selectedCourseId = null;
+let countdownInterval = null;
+
+async function loadCourses() {
+    try {
+        const [coursesRes, statusRes] = await Promise.all([
+            fetch('/courses/api/list'),
+            fetch('/courses/api/status')
+        ]);
+        
+        const coursesData = await coursesRes.json();
+        const statusData = await statusRes.json();
+        
+        selectionOpen = statusData.selection_open;
+        selectedCourseId = coursesData.selected_course_id;
+        
+        updateStatus(statusData);
+        renderCourses(coursesData.courses);
+        
+        if (statusData.countdown !== null) {
+            startCountdown(statusData.countdown);
+        }
+    } catch (error) {
+        console.error('加载失败:', error);
+    }
+}
+
+function updateStatus(statusData) {
+    const statusText = document.getElementById('statusText');
+    const countdownContainer = document.getElementById('countdownContainer');
+    
+    if (statusData.status === 'not_started') {
+        statusText.textContent = '未开始';
+        statusText.className = 'badge bg-secondary';
+        countdownContainer.style.display = 'block';
+    } else if (statusData.status === 'scheduled') {
+        statusText.textContent = '已安排';
+        statusText.className = 'badge bg-info';
+        countdownContainer.style.display = 'block';
+    } else if (statusData.status === 'open') {
+        statusText.textContent = '选课中';
+        statusText.className = 'badge bg-success';
+        countdownContainer.style.display = 'block';
+    } else if (statusData.status === 'ended') {
+        statusText.textContent = '已结束';
+        statusText.className = 'badge bg-danger';
+        countdownContainer.style.display = 'none';
+    }
+}
+
+function renderCourses(courses) {
+    const container = document.getElementById('courseList');
+    
+    if (selectedCourseId) {
+        const selected = courses.find(c => c.id === selectedCourseId);
+        document.getElementById('selectedCourse').textContent = selected.name;
+        document.getElementById('resultContainer').classList.remove('d-none');
+        return;
+    }
+    
+    container.innerHTML = courses.map(course => {
+        const isFull = course.current_count >= course.max_capacity;
+        const disabled = !selectionOpen || isFull;
+        const btnClass = disabled ? 'btn-secondary' : 'btn-primary';
+        const btnText = isFull ? '已满' : (selectionOpen ? '选择' : '未开放');
+        
+        return `
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100 ${selectedCourseId === course.id ? 'border-success' : ''}">
+                    <div class="card-body">
+                        <h5 class="card-title">${course.name}</h5>
+                        <p class="card-text">
+                            已选：${course.current_count} / ${course.max_capacity}
+                        </p>
+                        <button class="btn ${btnClass} w-100" 
+                                onclick="selectCourse(${course.id})"
+                                ${disabled ? 'disabled' : ''}>
+                            ${btnText}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function selectCourse(courseId) {
+    if (!selectionOpen) {
+        alert('选课时间未到或已结束');
+        return;
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    document.getElementById('confirmSelect').onclick = () => {
+        confirmSelect(courseId);
+        modal.hide();
+    };
+    modal.show();
+}
+
+async function confirmSelect(courseId) {
+    try {
+        const response = await fetch('/selection/select', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({course_id: courseId})
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            alert('选课成功！');
+            loadCourses();
+        } else {
+            alert(data.error);
+        }
+    } catch (error) {
+        alert('网络错误，请稍后重试');
+    }
+}
+
+function startCountdown(seconds) {
+    if (countdownInterval) clearInterval(countdownInterval);
+    
+    function update() {
+        if (seconds <= 0) {
+            clearInterval(countdownInterval);
+            location.reload();
+            return;
+        }
+        
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+        
+        document.getElementById('countdown').textContent = 
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        
+        seconds--;
+    }
+    
+    update();
+    countdownInterval = setInterval(update, 1000);
+}
+
+async function loadResult() {
+    try {
+        const response = await fetch('/selection/result');
+        const data = await response.json();
+        
+        if (data.has_selected) {
+            document.getElementById('selectedCourse').textContent = data.course_name;
+            document.getElementById('assignmentType').textContent = 
+                data.is_auto_assigned ? '分配方式：系统分配' : '分配方式：自主选择';
+            document.getElementById('resultContainer').classList.remove('d-none');
+        }
+    } catch (error) {
+        console.error('加载结果失败:', error);
+    }
+}
+
+function logout() {
+    fetch('/auth/logout', {method: 'POST'}).then(() => {
+        window.location.href = '/auth/login';
+    });
+}
+
+loadCourses();
+if (selectedCourseId) loadResult();
+</script>
+{% endblock %}
